@@ -110,6 +110,12 @@
       @update-available="onUpdateAvailable"
     />
 
+    <!-- ── 全局免责声明与服务条款弹窗 ── -->
+    <DisclaimerModal
+      v-model="showDisclaimerModal"
+      :is-force="isDisclaimerForce"
+    />
+
     <!-- Main Content -->
     <div class="flex flex-1 overflow-hidden">
       <main class="flex-1 overflow-hidden">
@@ -123,7 +129,11 @@
           @navigate="view => currentView = view"
         />
         <NasExplorer v-else-if="currentView === 'nas'" @play="playSong" />
-        <SourceManager v-else-if="currentView === 'sources'" @source-changed="onSourceChanged" />
+        <SourceManager
+          v-else-if="currentView === 'sources'"
+          @source-changed="onSourceChanged"
+          @open-disclaimer="openDisclaimer(false)"
+        />
       </main>
     </div>
 
@@ -174,6 +184,7 @@ import PlayerBar from './components/PlayerBar.vue'
 import ImmersivePlayer from './components/ImmersivePlayer.vue'
 import DownloadDrawer from './components/DownloadDrawer.vue'
 import UpdateModal from './components/UpdateModal.vue'
+import DisclaimerModal from './components/DisclaimerModal.vue'
 import { downloadManager } from './services/downloadManager'
 import { Compass, HardDrive, Cpu, Disc, Download, Sparkles } from 'lucide-vue-next'
 
@@ -181,6 +192,15 @@ const currentView = ref('search')
 const showRightPanel = ref(false)
 const showImmersive = ref(false)
 const stageTab = ref('turntable')
+
+// 免责声明与条款弹窗状态
+const showDisclaimerModal = ref(false)
+const isDisclaimerForce = ref(false)
+
+function openDisclaimer(force = false) {
+  isDisclaimerForce.value = force
+  showDisclaimerModal.value = true
+}
 
 // 自动更新检查状态
 const showUpdateModal = ref(false)
@@ -249,6 +269,13 @@ watch(isPlaying, (val) => {
 onMounted(async () => {
   audioEl.value = audioRef.value
   downloadManager.loadConfig()
+
+  // 0. 首次打开应用强制弹出免责声明与服务条款
+  if (!localStorage.getItem('fn_disclaimer_accepted')) {
+    setTimeout(() => {
+      openDisclaimer(true)
+    }, 150)
+  }
 
   // 1. 静默检查 GitHub 是否有新版本 (非阻塞)
   AppAPI.checkUpdate(false).then(res => {

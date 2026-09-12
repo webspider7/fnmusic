@@ -27,7 +27,23 @@
       </div>
     </div>
 
-    <div class="flex-1 overflow-y-auto bg-gray-50 p-4 md:p-5">
+    <div class="flex-1 overflow-y-auto bg-gray-50 p-4 md:p-5 space-y-3">
+      <!-- 常驻合规与免责声明条 -->
+      <div class="p-3 bg-amber-50/80 rounded-xl border border-amber-200/80 text-amber-900 text-xs flex items-center justify-between gap-2 shadow-2xs">
+        <div class="flex items-center gap-2 min-w-0">
+          <ShieldAlert class="w-4 h-4 text-amber-600 shrink-0" />
+          <span class="text-[11px] leading-relaxed truncate">
+            <strong>技术中立免责声明：</strong>本播放器为纯本地技术容器，不内置亦不提供任何在线音源。请确保您导入的第三方脚本符合相关法律法规与上游服务协议，仅限个人技术研究使用。
+          </span>
+        </div>
+        <button
+          @click="$emit('open-disclaimer')"
+          class="shrink-0 text-emerald-700 hover:text-emerald-800 text-[11px] font-semibold underline underline-offset-2 ml-2 cursor-pointer"
+        >
+          查看完整条款
+        </button>
+      </div>
+
       <!-- 空状态提示 (纯播放器，0 内置音源) -->
       <div v-if="sources.length === 0" class="flex flex-col items-center justify-center py-16 text-center bg-white rounded-2xl border border-gray-100 p-6 shadow-2xs">
         <div class="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center text-2xl mb-3 text-gray-400">
@@ -35,7 +51,7 @@
         </div>
         <h3 class="text-base font-semibold text-gray-700 mb-1">暂无已导入音源</h3>
         <p class="text-xs text-gray-400 max-w-sm mb-5 leading-relaxed px-4">
-          本软件为本地与流媒体播放器，不内置任何音源。请点击下方按钮手动导入您自己的第三方音源脚本规则（支持网络 URL 或本地 .js 文件）。
+          本软件为纯本地与流媒体技术播放器，不内置任何音源。请点击下方按钮手动导入您自己的第三方音源脚本规则（支持网络 URL 或本地 .js 文件）。
         </p>
         <button @click="showImportModal = true"
           class="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all">
@@ -128,7 +144,7 @@
 import { ref, onMounted } from 'vue'
 import { SourcesAPI } from '../api/client'
 import { lxRuntime } from '../engine/lx-runtime'
-import { Activity, Plus, Check, Trash2, X, PlayCircle } from 'lucide-vue-next'
+import { Activity, Plus, Check, Trash2, X, PlayCircle, ShieldAlert } from 'lucide-vue-next'
 
 const sources = ref([])
 const activeSourceId = ref('')
@@ -139,7 +155,7 @@ const showImportModal = ref(false)
 const importUrl = ref('')
 const importName = ref('')
 const isImporting = ref(false)
-const emit = defineEmits(['source-changed'])
+const emit = defineEmits(['source-changed', 'open-disclaimer'])
 
 function platformLabel(p) { return p }
 function getSourceIcon(id) { return { sixyin: '⚡', flower: '🌷', huibq: '💎', lx: '❄️', ikun: '🏀', grass: '🌿', juhe: '🔥', svip: '👑' }[id] || '🎧' }
