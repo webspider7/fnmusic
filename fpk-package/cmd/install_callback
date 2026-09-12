@@ -1,0 +1,7 @@
+#!/bin/bash
+APP_DIR="${TRIM_APPDEST:-$(cd "$(dirname "$0")/.." && pwd)}"
+chmod +x "${APP_DIR}/fn-lx-player" 2>/dev/null || true
+chmod +x "${APP_DIR}/app/fn-lx-player" 2>/dev/null || true
+chmod +x "${APP_DIR}/cmd/"* 2>/dev/null || true
+find "${APP_DIR}" -name "fn-lx-player" -exec chmod +x {} + 2>/dev/null || true
+exit 0

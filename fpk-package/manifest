@@ -1,0 +1,15 @@
+appname=fn-lx-player
+version=1.2.7
+display_name=极光音乐
+desc=一款专为飞牛NAS打造的高保真沉浸式极光音乐播放器，支持导入自定义第三方音源规则，支持NAS本地无损音乐扫描与原盘高码率串流，深度适配全平台与移动端。
+source=thirdparty
+maintainer=积木搬运师
+maintainer_url=https://bbs.fnnas.com
+distributor=积木搬运师
+distributor_url=https://bbs.fnnas.com
+platform=x86
+os_min_version=1.0.0
+desktop_uidir=ui
+desktop_applaunchname=fn-lx-player.main
+ctl_stop=true
+service_port=8899

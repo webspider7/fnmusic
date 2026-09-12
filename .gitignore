@@ -1,0 +1,19 @@
+﻿# Dependencies
+node_modules/
+
+# Local build and run data
+var/
+data/
+*.log
+*.pid
+
+# OS generated
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Executable binaries
+*.exe
+fpk-package/fn-lx-player
+fpk-package/app/fn-lx-player
+
