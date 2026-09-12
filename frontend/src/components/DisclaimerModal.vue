@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <Teleport to="body">
     <Transition
       enter-active-class="transition-opacity duration-200 ease-out"
@@ -10,15 +10,16 @@
     >
       <div
         v-if="modelValue"
-        class="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+        class="fixed inset-0 z-[99999] bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6"
+        style="z-index: 99999;"
         @click="onBackdropClick"
       >
         <div
           @click.stop
-          class="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200"
+          class="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-h-[86vh] my-auto animate-in fade-in zoom-in-95 duration-200 relative z-10"
         >
-          <!-- 标题栏 -->
-          <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-amber-50/60 to-orange-50/60">
+          <!-- 标题栏 (固定在顶部) -->
+          <div class="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-amber-50/70 to-orange-50/70 shrink-0">
             <div class="flex items-center gap-2.5">
               <div class="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-xs">
                 <ShieldAlert class="w-4 h-4" />
@@ -43,8 +44,8 @@
             </button>
           </div>
 
-          <!-- 正文条款区域 -->
-          <div class="p-5 overflow-y-auto space-y-3.5 text-xs leading-relaxed text-gray-600">
+          <!-- 正文条款区域 (自适应滚动) -->
+          <div class="p-5 flex-1 min-h-0 overflow-y-auto space-y-3.5 text-xs leading-relaxed text-gray-600">
             <div class="p-3 rounded-xl bg-amber-50/80 border border-amber-200/80 text-amber-900 text-[11px] flex items-start gap-2">
               <AlertTriangle class="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <div>

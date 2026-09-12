@@ -12,12 +12,13 @@
       <div
         v-if="modelValue"
         @click="close"
-        class="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+        class="fixed inset-0 z-[9000] bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4"
+        style="z-index: 9000;"
       >
         <!-- 弹窗卡片主体 -->
         <div
           @click.stop
-          class="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200"
+          class="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-h-[86vh] my-auto animate-in fade-in zoom-in-95 duration-200 relative z-10"
         >
           <!-- 顶部 Header -->
           <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-emerald-50/50 to-teal-50/50">
