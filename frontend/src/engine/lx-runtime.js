@@ -11,6 +11,17 @@ if (typeof globalThis.Buffer === 'undefined') {
   globalThis.Buffer = Buffer
 }
 
+export function normalizeQuality(q) {
+  if (!q) return '128k'
+  const lower = String(q).toLowerCase().trim()
+  if (lower === 'hi-res' || lower === 'hires' || lower === 'flac24bit' || lower === '24bit') return 'flac24bit'
+  if (lower === 'flac' || lower === 'lossless' || lower === 'sq') return 'flac'
+  if (lower === '320k' || lower === 'hq') return '320k'
+  if (lower === '192k') return '192k'
+  if (lower === '128k') return '128k'
+  return '128k'
+}
+
 class LxRuntime {
   constructor() {
     this.requestHandlers = new Map()   // sourceId -> handler function
@@ -61,7 +72,8 @@ class LxRuntime {
             bodyData = JSON.stringify(opts.json)
           }
         }
-        const timeout = opts.timeout || 15000
+        // 确保外部脚本请求至少有 10 秒超时缓冲，防止 gdstudio 等无损接口因 2s 短超时被提前掐断
+        const timeout = Math.max(opts.timeout || 15000, 10000)
 
         let aborted = false
 
@@ -221,14 +233,15 @@ class LxRuntime {
   }
 
   async getMusicUrl(sourceId, platform, musicInfo, quality = '128k') {
+    const targetQuality = normalizeQuality(quality)
     // 1. Try currently active source
     if (sourceId && this.requestHandlers.has(sourceId)) {
       try {
-        const res = await this._callHandler(sourceId, platform, musicInfo, quality)
+        const res = await this._callHandler(sourceId, platform, musicInfo, targetQuality)
         if (res?.url) return res
       } catch (e) {
-        console.warn(`[LX-RUNTIME] Active source (${quality}) failed:`, e.message)
-        if (quality !== '128k') {
+        console.warn(`[LX-RUNTIME] Active source (${targetQuality}) failed:`, e.message)
+        if (targetQuality !== '128k') {
           try {
             console.log('[LX-RUNTIME] Active source fallback to 128k...')
             const res128 = await this._callHandler(sourceId, platform, musicInfo, '128k')
@@ -245,13 +258,13 @@ class LxRuntime {
       if (otherId === sourceId) continue
       try {
         console.log('[LX-RUNTIME] Fallback trying other source:', otherId, musicInfo.name)
-        const res = await this._callHandler(otherId, platform, musicInfo, quality)
+        const res = await this._callHandler(otherId, platform, musicInfo, targetQuality)
         if (res?.url) {
           console.log('[LX-RUNTIME] Fallback succeeded with:', otherId, res.url)
           return res
         }
       } catch (e) {
-        if (quality !== '128k') {
+        if (targetQuality !== '128k') {
           try {
             const res128 = await this._callHandler(otherId, platform, musicInfo, '128k')
             if (res128?.url) return res128
@@ -268,6 +281,8 @@ class LxRuntime {
     if (!handler) {
       throw new Error('音源尚未就绪')
     }
+
+    const normQuality = normalizeQuality(quality)
 
     // 彻底清洗平台前缀，恢复纯净 ID / songmid / hash
     let cleanId = String(musicInfo.id || musicInfo.songmid || '').trim()
@@ -302,7 +317,7 @@ class LxRuntime {
       source: platform,
       action: 'musicUrl',
       info: {
-        type: quality || '128k',
+        type: normQuality,
         musicInfo: cleanMusicInfo
       }
     }
@@ -326,8 +341,17 @@ class LxRuntime {
     // Critical Shield: reject panspace fake / notice audio / error mp3
     if (finalUrl && /^https?:/.test(finalUrl)) {
       const lower = finalUrl.toLowerCase()
-      if (lower.includes('panspace') || lower.includes('notice') || lower.includes('audio_forbidden') || lower.includes('error.mp3')) {
-        throw new Error('第三方音源返回了渠道限制提示录音(panspace)，已自动屏蔽')
+      if (
+        lower.includes('panspace') ||
+        lower.includes('notice') ||
+        lower.includes('audio_forbidden') ||
+        lower.includes('error.mp3') ||
+        lower.includes('haitangw.cc') ||
+        lower.includes('175.27.166.236') ||
+        lower.includes('nxinxz.com') ||
+        lower.includes('sayqz.com')
+      ) {
+        throw new Error('第三方音源返回了失效或受限链接，已自动屏蔽')
       }
       return { url: finalUrl, headers: finalHeaders }
     }

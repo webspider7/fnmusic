@@ -57,6 +57,11 @@ export const ProxyAPI = {
   request: (options) => api.post('/proxy/http', options).then(res => res.data),
 }
 
+export const MusicAPI = {
+  getQualities: (source, id, songmid, hash) =>
+    api.get('/music/qualities', { params: { source, id, songmid, hash } }).then(res => res.data),
+}
+
 export const AppAPI = {
   checkUpdate: (force = false) => api.get('/app/check_update', { params: { force: force ? 1 : 0 } }).then(res => res.data),
   getVersion: () => api.get('/app/version').then(res => res.data),

@@ -1,4 +1,4 @@
-﻿package updater
+package updater
 
 import (
 	"encoding/json"
@@ -12,7 +12,7 @@ import (
 )
 
 // 当前应用版本号
-const CurrentVersion = "1.2.7"
+const CurrentVersion = "1.2.8"
 
 const (
 	RepoOwner          = "webspider7"

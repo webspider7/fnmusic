@@ -399,6 +399,14 @@
         </div>
       </Transition>
     </Teleport>
+
+    <!-- ── 下载音质格式选择模态框 ── -->
+    <DownloadQualityModal
+      v-model="isQualityModalOpen"
+      :song="currentDownloadSong"
+      :active-source="activeSource"
+      @confirm="handleConfirmDownloadQuality"
+    />
   </div>
 </template>
 
@@ -407,6 +415,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { SearchAPI, ChartsAPI } from '../api/client'
 import { lxRuntime } from '../engine/lx-runtime'
 import { downloadManager } from '../services/downloadManager'
+import DownloadQualityModal from './DownloadQualityModal.vue'
 import {
   Search, Play, Loader2, Music2, Download, HardDriveDownload,
   Folder, ArrowLeft, Shuffle, Repeat, Repeat1, Check, X, Radio
@@ -476,11 +485,13 @@ const hasActiveSource = computed(() => {
   return false
 })
 
+const STANDARD_PLATFORMS = ['wy', 'tx', 'kw', 'kg']
+
 const availablePlatforms = computed(() => {
   if (props.activeSource?.id) {
     const supported = lxRuntime.getSupportedSources(props.activeSource.id)
     const list = supported
-      .filter(id => id !== 'mg' && id !== 'local')
+      .filter(id => STANDARD_PLATFORMS.includes(id))
       .map(id => ({
         id,
         name: platformNames[id] || id,
@@ -497,7 +508,7 @@ const platforms = computed(() => {
   const list = [{ id: 'all', name: '全网聚合', icon: '🌐' }]
   if (props.activeSource?.id) {
     const supported = lxRuntime.getSupportedSources(props.activeSource.id)
-    const filtered = supported.filter(id => id !== 'mg' && id !== 'local')
+    const filtered = supported.filter(id => STANDARD_PLATFORMS.includes(id))
     if (filtered.length > 0) {
       filtered.forEach(id => {
         list.push({
@@ -535,7 +546,7 @@ function switchDiscoverTab(tab) {
 
 watch(() => props.activeSource?.id, (newId) => {
   if (!newId) return
-  const list = lxRuntime.getSupportedSources(newId).filter(id => id !== 'mg' && id !== 'local')
+  const list = lxRuntime.getSupportedSources(newId).filter(id => STANDARD_PLATFORMS.includes(id))
   if (list.length > 0 && !list.includes(selectedChartPlatform.value)) {
     selectedChartPlatform.value = list[0]
   }
@@ -743,6 +754,9 @@ function showToast(msg) {
   }, 2500)
 }
 
+const isQualityModalOpen = ref(false)
+const currentDownloadSong = ref(null)
+
 function checkSongsDownloaded(songs) {
   downloadManager.checkSongsDownloaded(songs)
 }
@@ -752,8 +766,14 @@ function downloadSingleSong(song) {
     alert('【未导入第三方音源】\n\n无法下载网络歌曲，请先在「音源管理」导入第三方音源脚本。')
     return
   }
-  downloadManager.addSong(song, props.activeSource?.id, false)
-  showToast(`已将《${song.name}》加入后台下载队列`)
+  currentDownloadSong.value = song
+  isQualityModalOpen.value = true
+}
+
+function handleConfirmDownloadQuality(song, quality) {
+  downloadManager.addSong(song, props.activeSource?.id, { autoOpen: false, quality })
+  const qText = quality ? quality.toUpperCase() : '默认'
+  showToast(`已将《${song.name}》(${qText})加入后台下载队列`)
 }
 
 function batchDownloadAll() {
@@ -766,7 +786,7 @@ function batchDownloadAll() {
   }
 
   downloadManager.addBatch(list, props.activeSource?.id, false)
-  showToast(`已添加 ${list.length} 首歌曲至后台下载队列`)
+  showToast(`已添加 ${list.length} 首歌曲至后台下载队列 (默认最高品质)`)
 }
 
 onMounted(async () => {

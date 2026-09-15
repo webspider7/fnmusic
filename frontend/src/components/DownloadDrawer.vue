@@ -199,10 +199,15 @@
                   <p class="text-xs font-semibold text-gray-800 truncate" :title="task.song.name">
                     {{ task.song.name }}
                   </p>
-                  <!-- 平台标签 -->
-                  <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-gray-100 text-gray-500 font-mono shrink-0">
-                    {{ task.song.source || task.platform || 'kw' }}
-                  </span>
+                  <!-- 平台与音质标签 -->
+                  <div class="flex items-center gap-1 shrink-0">
+                    <span v-if="task.quality" class="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-50 text-emerald-700 font-bold font-mono border border-emerald-200">
+                      {{ (task.actualFormat || task.quality).toUpperCase() }}
+                    </span>
+                    <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-gray-100 text-gray-500 font-mono">
+                      {{ task.song.source || task.platform || 'kw' }}
+                    </span>
+                  </div>
                 </div>
                 <p class="text-[11px] text-gray-400 truncate mb-1" :title="task.song.singer">
                   {{ task.song.singer }}{{ task.song.album ? ' · ' + task.song.album : '' }}
@@ -250,9 +255,11 @@
                   <span
                     v-else-if="task.status === 'success'"
                     class="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-600 flex items-center gap-1 font-medium"
+                    :title="task.qualityNote || ''"
                   >
                     <Check class="w-3 h-3 text-emerald-500" />
-                    <span>已保存至 NAS 本地</span>
+                    <span>已保存至 NAS 本地{{ task.actualFormat ? ` (.${task.actualFormat.toLowerCase()})` : '' }}</span>
+                    <span v-if="task.qualityNote" class="text-[9px] text-amber-600 font-normal">({{ task.qualityNote }})</span>
                   </span>
 
                   <!-- 下载失败 -->

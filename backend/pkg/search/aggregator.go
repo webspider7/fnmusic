@@ -640,7 +640,31 @@ func fetchLyric(source, songmid, title, singer string, durationSec int, hash str
 	return "", ""
 }
 
-// 1. NetEase (uses cloudsearch for HD cover al.picUrl)
+func determineHighestQuality(qualitys []string) string {
+	for _, q := range qualitys {
+		if q == "flac24bit" || q == "hires" {
+			return "Hi-Res"
+		}
+	}
+	for _, q := range qualitys {
+		if q == "flac" {
+			return "FLAC"
+		}
+	}
+	for _, q := range qualitys {
+		if q == "320k" {
+			return "320K"
+		}
+	}
+	for _, q := range qualitys {
+		if q == "192k" {
+			return "192K"
+		}
+	}
+	return "128K"
+}
+
+// 1. NetEase (uses cloudsearch for HD cover al.picUrl and real quality presence)
 func searchNetEase(keyword string, page, limit int) []UnifiedSong {
 	apiURL := fmt.Sprintf("https://music.163.com/api/cloudsearch/pc?s=%s&type=1&offset=%d&limit=%d",
 		url.QueryEscape(keyword), (page-1)*limit, limit)
@@ -667,7 +691,15 @@ func searchNetEase(keyword string, page, limit int) []UnifiedSong {
 					Name   string `json:"name"`
 					PicURL string `json:"picUrl"`
 				} `json:"al"`
-				Duration int `json:"dt"`
+				Duration  int `json:"dt"`
+				Privilege struct {
+					Maxbr int `json:"maxbr"`
+				} `json:"privilege"`
+				H  *struct{ Br int `json:"br"` } `json:"h"`
+				M  *struct{ Br int `json:"br"` } `json:"m"`
+				L  *struct{ Br int `json:"br"` } `json:"l"`
+				Sq *struct{ Br int `json:"br"` } `json:"sq"`
+				Hr *struct{ Br int `json:"br"` } `json:"hr"`
 			} `json:"songs"`
 		} `json:"result"`
 	}
@@ -686,6 +718,27 @@ func searchNetEase(keyword string, page, limit int) []UnifiedSong {
 		if cover != "" && strings.HasPrefix(cover, "http://") {
 			cover = strings.Replace(cover, "http://", "https://", 1)
 		}
+
+		qualitys := make([]string, 0, 5)
+		if s.L != nil || s.Privilege.Maxbr >= 128000 {
+			qualitys = append(qualitys, "128k")
+		}
+		if s.M != nil || s.Privilege.Maxbr >= 192000 {
+			qualitys = append(qualitys, "192k")
+		}
+		if s.H != nil || s.Privilege.Maxbr >= 320000 {
+			qualitys = append(qualitys, "320k")
+		}
+		if s.Sq != nil || s.Privilege.Maxbr >= 999000 {
+			qualitys = append(qualitys, "flac")
+		}
+		if s.Hr != nil {
+			qualitys = append(qualitys, "flac24bit")
+		}
+		if len(qualitys) == 0 {
+			qualitys = []string{"128k"}
+		}
+
 		list = append(list, UnifiedSong{
 			ID:        fmt.Sprintf("wy_%d", s.ID),
 			Songmid:   fmt.Sprintf("%d", s.ID),
@@ -696,15 +749,15 @@ func searchNetEase(keyword string, page, limit int) []UnifiedSong {
 			Source:    "wy",
 			Duration:  durationSec,
 			Interval:  durationSec,
-			Quality:   "320K",
-			Qualitys:  []string{"128k", "320k", "flac", "flac24bit"},
+			Quality:   determineHighestQuality(qualitys),
+			Qualitys:  qualitys,
 			RawSource: "wy",
 		})
 	}
 	return list
 }
 
-// 2. QQ Music (HD album cover via Albummid)
+// 2. QQ Music (HD album cover via Albummid and real quality presence)
 func searchQQ(keyword string, page, limit int) []UnifiedSong {
 	apiURL := fmt.Sprintf("https://c.y.qq.com/soso/fcgi-bin/client_search_cp?p=%d&n=%d&w=%s&format=json",
 		page, limit, url.QueryEscape(keyword))
@@ -723,14 +776,18 @@ func searchQQ(keyword string, page, limit int) []UnifiedSong {
 		Data struct {
 			Song struct {
 				List []struct {
-					Songmid  string `json:"songmid"`
-					Songname string `json:"songname"`
-					Singer   []struct {
+					Songmid   string `json:"songmid"`
+					Songname  string `json:"songname"`
+					Singer    []struct {
 						Name string `json:"name"`
 					} `json:"singer"`
 					Albumname string `json:"albumname"`
 					Albummid  string `json:"albummid"`
 					Interval  int    `json:"interval"`
+					Size128   int64  `json:"size128"`
+					Size320   int64  `json:"size320"`
+					SizeFlac  int64  `json:"sizeflac"`
+					SizeHires int64  `json:"sizehires"`
 				} `json:"list"`
 			} `json:"song"`
 		} `json:"data"`
@@ -749,6 +806,24 @@ func searchQQ(keyword string, page, limit int) []UnifiedSong {
 		if s.Albummid != "" {
 			cover = fmt.Sprintf("https://y.gtimg.cn/music/photo_new/T002R300x300M000%s.jpg", s.Albummid)
 		}
+
+		qualitys := make([]string, 0, 4)
+		if s.Size128 > 0 {
+			qualitys = append(qualitys, "128k")
+		}
+		if s.Size320 > 0 {
+			qualitys = append(qualitys, "320k")
+		}
+		if s.SizeFlac > 0 {
+			qualitys = append(qualitys, "flac")
+		}
+		if s.SizeHires > 0 {
+			qualitys = append(qualitys, "flac24bit")
+		}
+		if len(qualitys) == 0 {
+			qualitys = []string{"128k"}
+		}
+
 		list = append(list, UnifiedSong{
 			ID:        "tx_" + s.Songmid,
 			Songmid:   s.Songmid,
@@ -759,15 +834,15 @@ func searchQQ(keyword string, page, limit int) []UnifiedSong {
 			Source:    "tx",
 			Duration:  s.Interval,
 			Interval:  s.Interval,
-			Quality:   "FLAC",
-			Qualitys:  []string{"128k", "320k", "flac", "flac24bit"},
+			Quality:   determineHighestQuality(qualitys),
+			Qualitys:  qualitys,
 			RawSource: "tx",
 		})
 	}
 	return list
 }
 
-// 3. KuGou (HD album cover via Image field)
+// 3. KuGou (HD album cover via Image field and real quality presence)
 func searchKuGou(keyword string, page, limit int) []UnifiedSong {
 	apiURL := fmt.Sprintf("https://songsearch.kugou.com/song_search_v2?keyword=%s&page=%d&pagesize=%d&platform=WebFilter",
 		url.QueryEscape(keyword), page, limit)
@@ -784,12 +859,19 @@ func searchKuGou(keyword string, page, limit int) []UnifiedSong {
 	var raw struct {
 		Data struct {
 			Lists []struct {
-				FileHash   string `json:"FileHash"`
-				SongName   string `json:"SongName"`
-				SingerName string `json:"SingerName"`
-				AlbumName  string `json:"AlbumName"`
-				Duration   int    `json:"Duration"`
-				Image      string `json:"Image"`
+				FileHash    string `json:"FileHash"`
+				FileSize    int64  `json:"FileSize"`
+				HQFileHash  string `json:"HQFileHash"`
+				HQFileSize  int64  `json:"HQFileSize"`
+				SQFileHash  string `json:"SQFileHash"`
+				SQFileSize  int64  `json:"SQFileSize"`
+				ResFileHash string `json:"ResFileHash"`
+				ResFileSize int64  `json:"ResFileSize"`
+				SongName    string `json:"SongName"`
+				SingerName  string `json:"SingerName"`
+				AlbumName   string `json:"AlbumName"`
+				Duration    int    `json:"Duration"`
+				Image       string `json:"Image"`
 			} `json:"lists"`
 		} `json:"data"`
 	}
@@ -808,6 +890,24 @@ func searchKuGou(keyword string, page, limit int) []UnifiedSong {
 				cover = strings.Replace(cover, "http://", "https://", 1)
 			}
 		}
+
+		qualitys := make([]string, 0, 4)
+		if s.FileHash != "" && s.FileSize > 0 {
+			qualitys = append(qualitys, "128k")
+		}
+		if s.HQFileHash != "" && s.HQFileSize > 0 {
+			qualitys = append(qualitys, "320k")
+		}
+		if s.SQFileHash != "" && s.SQFileSize > 0 {
+			qualitys = append(qualitys, "flac")
+		}
+		if s.ResFileHash != "" && s.ResFileSize > 0 {
+			qualitys = append(qualitys, "flac24bit")
+		}
+		if len(qualitys) == 0 {
+			qualitys = []string{"128k"}
+		}
+
 		list = append(list, UnifiedSong{
 			ID:        "kg_" + s.FileHash,
 			Songmid:   s.FileHash,
@@ -819,15 +919,15 @@ func searchKuGou(keyword string, page, limit int) []UnifiedSong {
 			Source:    "kg",
 			Duration:  s.Duration,
 			Interval:  s.Duration,
-			Quality:   "320K",
-			Qualitys:  []string{"128k", "320k", "flac", "flac24bit"},
+			Quality:   determineHighestQuality(qualitys),
+			Qualitys:  qualitys,
 			RawSource: "kg",
 		})
 	}
 	return list
 }
 
-// 4. KuWo (HD album cover via web_albumpic_short)
+// 4. KuWo (HD album cover via web_albumpic_short and real quality presence)
 func searchKuWo(keyword string, page, limit int) []UnifiedSong {
 	apiURL := fmt.Sprintf("https://search.kuwo.cn/r.s?all=%s&ft=music&itemset=web_2013&client=kt&pn=%d&rn=%d&rformat=json&encoding=utf8",
 		url.QueryEscape(keyword), page-1, limit)
@@ -843,13 +943,15 @@ func searchKuWo(keyword string, page, limit int) []UnifiedSong {
 
 	var raw struct {
 		Abslist []struct {
-			MUSICRID            string      `json:"MUSICRID"`
-			SONGNAME            string      `json:"SONGNAME"`
-			ARTIST              string      `json:"ARTIST"`
-			ALBUM               string      `json:"ALBUM"`
-			DURATION            interface{} `json:"DURATION"`
-			WebAlbumpicShort    string      `json:"web_albumpic_short"`
-			WebArtistpicShort   string      `json:"web_artistpic_short"`
+			MUSICRID          string      `json:"MUSICRID"`
+			SONGNAME          string      `json:"SONGNAME"`
+			ARTIST            string      `json:"ARTIST"`
+			ALBUM             string      `json:"ALBUM"`
+			DURATION          interface{} `json:"DURATION"`
+			WebAlbumpicShort  string      `json:"web_albumpic_short"`
+			WebArtistpicShort string      `json:"web_artistpic_short"`
+			N_MINFO           string      `json:"N_MINFO"`
+			FORMATS           string      `json:"FORMATS"`
 		} `json:"abslist"`
 	}
 
@@ -878,6 +980,24 @@ func searchKuWo(keyword string, page, limit int) []UnifiedSong {
 			cover = "https://img1.kuwo.cn/star/starheads/" + s.WebArtistpicShort
 		}
 
+		qualitys := make([]string, 0, 4)
+		formatsUpper := strings.ToUpper(s.FORMATS + " " + s.N_MINFO)
+		if strings.Contains(formatsUpper, "128") || strings.Contains(formatsUpper, "LEVEL:H") || strings.Contains(formatsUpper, "MP3128") {
+			qualitys = append(qualitys, "128k")
+		}
+		if strings.Contains(formatsUpper, "320") || strings.Contains(formatsUpper, "LEVEL:P") || strings.Contains(formatsUpper, "MP3H") {
+			qualitys = append(qualitys, "320k")
+		}
+		if strings.Contains(formatsUpper, "FLAC") || strings.Contains(formatsUpper, "LEVEL:ZP") || strings.Contains(formatsUpper, "ALFLAC") || strings.Contains(formatsUpper, "2000") {
+			qualitys = append(qualitys, "flac")
+		}
+		if strings.Contains(formatsUpper, "HIR") || strings.Contains(formatsUpper, "24BIT") {
+			qualitys = append(qualitys, "flac24bit")
+		}
+		if len(qualitys) == 0 {
+			qualitys = []string{"128k", "320k"}
+		}
+
 		list = append(list, UnifiedSong{
 			ID:        "kw_" + rid,
 			Songmid:   rid,
@@ -888,8 +1008,8 @@ func searchKuWo(keyword string, page, limit int) []UnifiedSong {
 			Source:    "kw",
 			Duration:  durSec,
 			Interval:  durSec,
-			Quality:   "FLAC",
-			Qualitys:  []string{"128k", "320k", "flac", "hires"},
+			Quality:   determineHighestQuality(qualitys),
+			Qualitys:  qualitys,
 			RawSource: "kw",
 		})
 	}
@@ -902,4 +1022,166 @@ func cleanTitle(t string) string {
 	t = strings.ReplaceAll(t, "&quot;", "\"")
 	t = strings.ReplaceAll(t, "&apos;", "'")
 	return strings.TrimSpace(t)
+}
+
+// GetSongQualities dynamically retrieves available audio qualities for a given song across sources
+func GetSongQualities(source, id, songmid, hash string) []string {
+	source = strings.ToLower(strings.TrimSpace(source))
+	cleanId := strings.TrimPrefix(id, source+"_")
+	cleanMid := strings.TrimPrefix(songmid, source+"_")
+	cleanHash := strings.TrimPrefix(hash, source+"_")
+
+	switch source {
+	case "wy":
+		targetId := cleanId
+		if targetId == "" {
+			targetId = cleanMid
+		}
+		if targetId != "" {
+			apiURL := fmt.Sprintf("https://music.163.com/api/v3/song/detail?c=[{\"id\":%s}]", targetId)
+			req, _ := http.NewRequest("GET", apiURL, nil)
+			req.Header.Set("Referer", "https://music.163.com/")
+			resp, err := httpClient.Do(req)
+			if err == nil && resp.StatusCode == 200 {
+				defer resp.Body.Close()
+				var det struct {
+					Privileges []struct {
+						Maxbr int `json:"maxbr"`
+					} `json:"privileges"`
+					Songs []struct {
+						L  *struct{ Br int } `json:"l"`
+						M  *struct{ Br int } `json:"m"`
+						H  *struct{ Br int } `json:"h"`
+						Sq *struct{ Br int } `json:"sq"`
+						Hr *struct{ Br int } `json:"hr"`
+					} `json:"songs"`
+				}
+				if json.NewDecoder(resp.Body).Decode(&det) == nil && len(det.Songs) > 0 {
+					s := det.Songs[0]
+					maxbr := 0
+					if len(det.Privileges) > 0 {
+						maxbr = det.Privileges[0].Maxbr
+					}
+					qs := make([]string, 0, 5)
+					if s.L != nil || maxbr >= 128000 {
+						qs = append(qs, "128k")
+					}
+					if s.M != nil || maxbr >= 192000 {
+						qs = append(qs, "192k")
+					}
+					if s.H != nil || maxbr >= 320000 {
+						qs = append(qs, "320k")
+					}
+					if s.Sq != nil || maxbr >= 999000 {
+						qs = append(qs, "flac")
+					}
+					if s.Hr != nil {
+						qs = append(qs, "flac24bit")
+					}
+					if len(qs) > 0 {
+						return qs
+					}
+				}
+			}
+		}
+	case "kg":
+		targetHash := cleanHash
+		if targetHash == "" {
+			targetHash = cleanId
+		}
+		if targetHash != "" {
+			// Kugou hash info search
+			apiURL := fmt.Sprintf("https://m.kugou.com/app/i/getSongInfo.php?cmd=playInfo&hash=%s", targetHash)
+			req, _ := http.NewRequest("GET", apiURL, nil)
+			resp, err := httpClient.Do(req)
+			if err == nil && resp.StatusCode == 200 {
+				defer resp.Body.Close()
+				var kgInfo struct {
+					FileSize    int64  `json:"fileSize"`
+					ExtName     string `json:"extName"`
+					HQFileHash  string `json:"hqFileHash"`
+					SQFileHash  string `json:"sqFileHash"`
+					ResFileHash string `json:"resFileHash"`
+				}
+				if json.NewDecoder(resp.Body).Decode(&kgInfo) == nil && (kgInfo.HQFileHash != "" || kgInfo.SQFileHash != "") {
+					qs := []string{"128k"}
+					if kgInfo.HQFileHash != "" {
+						qs = append(qs, "320k")
+					}
+					if kgInfo.SQFileHash != "" {
+						qs = append(qs, "flac")
+					}
+					if kgInfo.ResFileHash != "" {
+						qs = append(qs, "flac24bit")
+					}
+					return qs
+				}
+			}
+		}
+		// 官方 API 失效或无有效数据：乐观策略返回完整音质列表，由前端 lx-runtime 实际解析时降级
+		return []string{"128k", "320k", "flac"}
+	case "kw":
+		targetRid := cleanId
+		if targetRid == "" {
+			targetRid = cleanMid
+		}
+		if targetRid != "" {
+			// Kuwo songinfo
+			apiURL := fmt.Sprintf("http://m.kuwo.cn/newh5/singles/songinfoandlrc?musicId=%s", targetRid)
+			req, _ := http.NewRequest("GET", apiURL, nil)
+			resp, err := httpClient.Do(req)
+			if err == nil && resp.StatusCode == 200 {
+				defer resp.Body.Close()
+				var kwRes struct {
+					Data struct {
+						Formats string `json:"formats"`
+					} `json:"data"`
+				}
+				if json.NewDecoder(resp.Body).Decode(&kwRes) == nil && kwRes.Data.Formats != "" {
+					fUpper := strings.ToUpper(kwRes.Data.Formats)
+					qs := make([]string, 0, 4)
+					if strings.Contains(fUpper, "128") || strings.Contains(fUpper, "MP3128") {
+						qs = append(qs, "128k")
+					}
+					if strings.Contains(fUpper, "320") || strings.Contains(fUpper, "MP3H") {
+						qs = append(qs, "320k")
+					}
+					if strings.Contains(fUpper, "FLAC") || strings.Contains(fUpper, "2000") {
+						qs = append(qs, "flac")
+					}
+					if strings.Contains(fUpper, "HIR") || strings.Contains(fUpper, "24BIT") {
+						qs = append(qs, "flac24bit")
+					}
+					if len(qs) > 0 {
+						return qs
+					}
+				}
+			}
+		}
+		// 官方 API 失效：乐观策略返回完整音质列表，由前端 lx-runtime 实际解析时降级
+		return []string{"128k", "320k", "flac"}
+	case "tx":
+		// 腾讯音乐官方 API 需要鉴权，直接使用乐观策略
+		return []string{"128k", "320k", "flac"}
+	}
+
+	return []string{"128k", "320k"}
+}
+
+
+// HandleSongQualities handles GET /api/music/qualities
+func HandleSongQualities(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	q := r.URL.Query()
+	source := strings.ToLower(q.Get("source"))
+	id := strings.TrimSpace(q.Get("id"))
+	songmid := strings.TrimSpace(q.Get("songmid"))
+	hash := strings.TrimSpace(q.Get("hash"))
+
+	qualities := GetSongQualities(source, id, songmid, hash)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"code":      200,
+		"qualities": qualities,
+		"highest":   determineHighestQuality(qualities),
+	})
 }

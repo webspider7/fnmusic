@@ -110,6 +110,7 @@ func (s *Server) Router() http.Handler {
 	// 4. Search & Direct Audio Resolver
 	mux.HandleFunc("/api/search", search.HandleSearch)
 	mux.HandleFunc("/api/search/lyric", search.HandleLyric)
+	mux.HandleFunc("/api/music/qualities", search.HandleSongQualities)
 	mux.HandleFunc("/api/player/resolve", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusForbidden)

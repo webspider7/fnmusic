@@ -37,6 +37,7 @@ type SongPayload struct {
 	URL       string `json:"url"`
 	StreamURL string `json:"streamUrl"`
 	Referer   string `json:"referer"`
+	Quality   string `json:"quality"`
 }
 
 // GetStreamReferer determines the appropriate Referer header for music streaming and downloading
@@ -93,7 +94,7 @@ func NewDownloader(cfgMgr *config.ConfigManager) *Downloader {
 	return &Downloader{
 		cfgMgr: cfgMgr,
 		httpClient: &http.Client{
-			Timeout: 45 * time.Second,
+			Timeout: 120 * time.Second,
 		},
 		batchTasks: make(map[string]*BatchTask),
 	}
@@ -204,17 +205,26 @@ func (d *Downloader) downloadSingleSong(song SongPayload) (*SongResult, error) {
 
 	cleanSinger := sanitizeFilename(song.Singer)
 	cleanName := sanitizeFilename(song.Name)
-	filename := fmt.Sprintf("%s - %s.mp3", cleanSinger, cleanName)
-	finalPath := filepath.Join(destDir, filename)
 
-	// Check if already exists and size > 500KB
-	if fi, err := os.Stat(finalPath); err == nil && fi.Size() > 500*1024 {
-		return &SongResult{
-			SongName: song.Name,
-			Singer:   song.Singer,
-			Status:   "already_exists",
-			Path:     filepath.ToSlash(finalPath),
-		}, nil
+	qLower := strings.ToLower(song.Quality)
+	isLosslessReq := strings.Contains(qLower, "flac") || strings.Contains(qLower, "hires") || strings.Contains(qLower, "24bit") || strings.Contains(qLower, "sq")
+
+	// 检查是否已存在对应品质歌曲文件（若用户请求无损，已存在的 MP3 不应阻断升级下载）
+	checkExts := []string{".flac", ".mp3", ".m4a", ".wav"}
+	if isLosslessReq {
+		checkExts = []string{".flac", ".wav"}
+	}
+
+	for _, checkExt := range checkExts {
+		chkPath := filepath.Join(destDir, fmt.Sprintf("%s - %s%s", cleanSinger, cleanName, checkExt))
+		if fi, err := os.Stat(chkPath); err == nil && fi.Size() > 300*1024 {
+			return &SongResult{
+				SongName: song.Name,
+				Singer:   song.Singer,
+				Status:   "already_exists",
+				Path:     filepath.ToSlash(chkPath),
+			}, nil
+		}
 	}
 
 	// Resolve download audio URL
@@ -234,8 +244,8 @@ func (d *Downloader) downloadSingleSong(song SongPayload) (*SongResult, error) {
 		}, fmt.Errorf("未提供有效音频流地址")
 	}
 
-	// Download to temp file
-	tmpPath := finalPath + ".downloading"
+	// 使用纳秒时间戳唯一临时文件名，杜绝并发下载/重试时的文件竞争与截断
+	tmpPath := filepath.Join(destDir, fmt.Sprintf(".%s - %s.%d.downloading", cleanSinger, cleanName, time.Now().UnixNano()))
 	req, err := http.NewRequest("GET", audioURL, nil)
 	if err != nil {
 		return nil, err
@@ -255,6 +265,12 @@ func (d *Downloader) downloadSingleSong(song SongPayload) (*SongResult, error) {
 		return nil, fmt.Errorf("HTTP 错误: %d", resp.StatusCode)
 	}
 
+	// 拦截错误返回的 JSON/HTML 错误页
+	ct := strings.ToLower(resp.Header.Get("Content-Type"))
+	if strings.Contains(ct, "application/json") || strings.Contains(ct, "text/html") {
+		return nil, fmt.Errorf("第三方音源直链返回了非音频数据 (%s)", ct)
+	}
+
 	out, err := os.Create(tmpPath)
 	if err != nil {
 		return nil, fmt.Errorf("创建临时文件失败: %w", err)
@@ -272,7 +288,37 @@ func (d *Downloader) downloadSingleSong(song SongPayload) (*SongResult, error) {
 		return nil, fmt.Errorf("下载文件过小 (可能为提示音频或无效流)")
 	}
 
-	// Rename temp to final
+	// 动态检测真实音频格式魔数 (Magic Header)
+	ext := ".mp3"
+	if isLosslessReq {
+		ext = ".flac"
+	}
+
+	magicBuf := make([]byte, 12)
+	if f, err := os.Open(tmpPath); err == nil {
+		n, _ := f.Read(magicBuf)
+		_ = f.Close()
+		if n >= 4 {
+			if string(magicBuf[:4]) == "fLaC" {
+				ext = ".flac"
+			} else if n >= 8 && (string(magicBuf[4:8]) == "ftyp" || string(magicBuf[:4]) == "ftyp") {
+				ext = ".m4a"
+			} else if string(magicBuf[:3]) == "ID3" || (magicBuf[0] == 0xFF && (magicBuf[1]&0xE0) == 0xE0) {
+				ext = ".mp3"
+			}
+		}
+	}
+
+	finalFilename := fmt.Sprintf("%s - %s%s", cleanSinger, cleanName, ext)
+	finalPath := filepath.Join(destDir, finalFilename)
+
+	// 若成功下载了 FLAC，且之前存在相同歌曲的低音质 MP3，自动清理 MP3 升级为纯无损
+	if ext == ".flac" {
+		oldMp3 := filepath.Join(destDir, fmt.Sprintf("%s - %s.mp3", cleanSinger, cleanName))
+		_ = os.Remove(oldMp3)
+	}
+
+	_ = os.Remove(finalPath)
 	if err := os.Rename(tmpPath, finalPath); err != nil {
 		_ = os.Remove(tmpPath)
 		return nil, fmt.Errorf("保存最终文件失败: %w", err)
@@ -334,10 +380,16 @@ func (d *Downloader) HandleCheckDownloaded(w http.ResponseWriter, r *http.Reques
 	for _, s := range req.Songs {
 		cleanSinger := sanitizeFilename(s.Singer)
 		cleanName := sanitizeFilename(s.Name)
-		filename := fmt.Sprintf("%s - %s.mp3", cleanSinger, cleanName)
-		fullPath := filepath.Join(destDir, filename)
 		key := fmt.Sprintf("%s - %s", s.Singer, s.Name)
-		if fi, err := os.Stat(fullPath); err == nil && fi.Size() > 300*1024 {
+		found := false
+		for _, checkExt := range []string{".flac", ".mp3", ".m4a", ".wav"} {
+			chkPath := filepath.Join(destDir, fmt.Sprintf("%s - %s%s", cleanSinger, cleanName, checkExt))
+			if fi, err := os.Stat(chkPath); err == nil && fi.Size() > 300*1024 {
+				found = true
+				break
+			}
+		}
+		if found {
 			existsMap[key] = true
 			if s.ID != "" {
 				existsMap[s.ID] = true

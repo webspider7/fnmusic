@@ -102,7 +102,17 @@ async function checkSongsDownloaded(songs) {
 }
 
 // 添加单曲下载任务
-function addSong(song, activeSourceId, autoOpen = true) {
+function addSong(song, activeSourceId, autoOpenOrOptions = true, qualityParam = null) {
+  let autoOpen = true
+  let quality = qualityParam || song.downloadQuality || song.quality || '320k'
+
+  if (typeof autoOpenOrOptions === 'object' && autoOpenOrOptions !== null) {
+    autoOpen = autoOpenOrOptions.autoOpen ?? true
+    quality = autoOpenOrOptions.quality || quality
+  } else if (typeof autoOpenOrOptions === 'boolean') {
+    autoOpen = autoOpenOrOptions
+  }
+
   const key = getSongKey(song)
   // 如果当前已在下载队列中且未结束，则直接打开面板
   const existing = tasks.value.find(t => 
@@ -117,6 +127,7 @@ function addSong(song, activeSourceId, autoOpen = true) {
     id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     songKey: key,
     song: { ...song },
+    quality: quality,
     status: 'pending',
     error: '',
     activeSourceId: activeSourceId || '',
@@ -135,7 +146,7 @@ function addSong(song, activeSourceId, autoOpen = true) {
 }
 
 // 批量添加下载任务 (默认 autoOpen 为 false，静默后台加入队列)
-function addBatch(songs, activeSourceId, autoOpen = false) {
+function addBatch(songs, activeSourceId, autoOpen = false, targetQuality = null) {
   if (!songs || !songs.length) return
 
   for (const song of songs) {
@@ -144,10 +155,13 @@ function addBatch(songs, activeSourceId, autoOpen = false) {
     if (isSongDownloaded(song)) continue
     if (isSongDownloading(song)) continue
 
+    const q = targetQuality || song.downloadQuality || song.quality || '320k'
+
     const task = {
       id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       songKey: key,
       song: { ...song },
+      quality: q,
       status: isPaused.value ? 'paused' : 'pending',
       error: '',
       activeSourceId: activeSourceId || '',
@@ -314,10 +328,13 @@ async function executeTask(task) {
 
   const song = task.song
   const payload = { ...song }
+  const targetQuality = task.quality || '320k'
+  payload.quality = targetQuality
 
   // 1. 直链解析阶段
   task.status = 'resolving'
   task.error = ''
+  task.qualityNote = ''
 
   let audioUrl = payload.url || payload.streamUrl || ''
 
@@ -331,7 +348,7 @@ async function executeTask(task) {
 
     try {
       const platform = task.platform || song.source || 'kw'
-      const urlRes = await lxRuntime.getMusicUrl(sourceId, platform, song, '320k')
+      const urlRes = await lxRuntime.getMusicUrl(sourceId, platform, song, targetQuality)
       if (task._aborted || task.status === 'paused') return
 
       if (urlRes?.url) {
@@ -340,29 +357,87 @@ async function executeTask(task) {
         if (urlRes.headers?.Referer) {
           payload.referer = urlRes.headers.Referer
         }
+
+        // 若用户指定无损(FLAC/Hi-Res)，但原平台音源仅能返回 MP3 流时，尝试跨平台寻找真正的 FLAC 流
+        const isLosslessReq = targetQuality === 'flac' || targetQuality === 'flac24bit'
+        const isDowngraded = isLosslessReq && (audioUrl.includes('.mp3') || audioUrl.includes('type=mp3'))
+        if (isDowngraded) {
+          console.log(`[DOWNLOAD] 原平台 [${platform}] 降级为 MP3，尝试跨平台检索真实 FLAC:`, song.name)
+          const altPlatforms = ['kw', 'kg', 'tx'].filter(p => p !== platform)
+          for (const altP of altPlatforms) {
+            try {
+              const query = `${song.name} ${song.singer || ''}`.trim()
+              const searchRes = await SearchAPI.search(query, altP, 1)
+              const candidates = searchRes?.data?.list || searchRes?.data?.songs || []
+              const matched = candidates.find(c => 
+                (c.name.includes(song.name) || song.name.includes(c.name)) &&
+                (!song.singer || c.singer.includes(song.singer) || song.singer.includes(c.singer))
+              )
+              if (matched) {
+                const altRes = await lxRuntime.getMusicUrl(sourceId, altP, matched, targetQuality)
+                const altUrl = altRes?.url || ''
+                // 严格校验：备选平台返回的必须是真实的无损直链，严禁采用未经验证的脚本模板或MP3流
+                const isRealFlac = altUrl && (
+                  altUrl.includes('.flac') ||
+                  altUrl.includes('format=flac') ||
+                  altUrl.includes('rate=flac') ||
+                  altUrl.includes('fLaC')
+                ) && !altUrl.includes('.php') && !altUrl.includes('.mp3') && !altUrl.includes('type=mp3')
+
+                if (isRealFlac) {
+                  audioUrl = altUrl
+                  payload.url = audioUrl
+                  if (altRes.headers?.Referer) payload.referer = altRes.headers.Referer
+                  console.log(`[DOWNLOAD] 跨平台 [${altP.toUpperCase()}] 成功获取真实无损 FLAC 直链:`, audioUrl)
+                  break
+                }
+              }
+            } catch (_) {}
+          }
+        }
       } else {
         throw new Error('音源返回空下载直链')
       }
     } catch (resolveErr) {
       if (task._aborted || task.status === 'paused') return
 
-      // 尝试备选跨平台检索匹配下载
-      try {
-        const query = `${song.singer} ${song.name}`.trim()
-        const searchRes = await SearchAPI.search(query, 'kw', 1)
-        const candidates = searchRes?.data?.list || searchRes?.data?.songs || []
-        const matched = candidates.find(c => 
-          (c.name.includes(song.name) || song.name.includes(c.name)) &&
-          (c.singer.includes(song.singer) || song.singer.includes(c.singer))
-        )
-        if (matched) {
-          const fallbackRes = await lxRuntime.getMusicUrl(sourceId, 'kw', matched, '320k')
-          if (fallbackRes?.url) {
-            audioUrl = fallbackRes.url
+      // 如果是无损格式请求失败，先同平台降级到 320k
+      const isLosslessReq2 = targetQuality === 'flac' || targetQuality === 'flac24bit'
+      if (isLosslessReq2) {
+        try {
+          const platform2 = task.platform || song.source || 'kw'
+          const sourceId2 = task.activeSourceId || localStorage.getItem('fn_active_source_id') || ''
+          console.log(`[DOWNLOAD] FLAC 解析失败，同平台 [${platform2}] 降级到 320k:`, resolveErr.message)
+          const res320 = await lxRuntime.getMusicUrl(sourceId2, platform2, song, '320k')
+          if (res320?.url && !res320.url.includes('.php')) {
+            audioUrl = res320.url
             payload.url = audioUrl
+            if (res320.headers?.Referer) payload.referer = res320.headers.Referer
+            task.qualityNote = '音源仅提供最高MP3流 (320k)'
           }
-        }
-      } catch (_) {}
+        } catch (_) {}
+      }
+
+      // 仍然没有 URL：尝试备选跨平台检索
+      if (!audioUrl) {
+        try {
+          const query = `${song.singer} ${song.name}`.trim()
+          const searchRes = await SearchAPI.search(query, 'kw', 1)
+          const candidates = searchRes?.data?.list || searchRes?.data?.songs || []
+          const matched = candidates.find(c => 
+            (c.name.includes(song.name) || song.name.includes(c.name)) &&
+            (c.singer.includes(song.singer) || song.singer.includes(c.singer))
+          )
+          if (matched) {
+            const fallbackRes = await lxRuntime.getMusicUrl(sourceId, 'kw', matched, targetQuality)
+            if (fallbackRes?.url && !fallbackRes.url.includes('.php')) {
+              audioUrl = fallbackRes.url
+              payload.url = audioUrl
+              if (fallbackRes.headers?.Referer) payload.referer = fallbackRes.headers.Referer
+            }
+          }
+        } catch (_) {}
+      }
 
       if (!audioUrl) {
         if (task._aborted || task.status === 'paused') return
@@ -385,6 +460,17 @@ async function executeTask(task) {
     if (res.code === 200) {
       task.status = 'success'
       task.completedAt = Date.now()
+      const savedPath = res.data?.path || res.result?.path || ''
+      if (savedPath) {
+        task.savedPath = savedPath
+        const ext = savedPath.split('.').pop()
+        if (ext) {
+          task.actualFormat = ext.toUpperCase()
+          if ((targetQuality === 'flac' || targetQuality === 'flac24bit') && task.actualFormat === 'MP3') {
+            task.qualityNote = '音源仅提供最高MP3流'
+          }
+        }
+      }
       // 登记已下载映射
       downloadedMap.value[task.songKey] = true
       downloadedMap.value[`${song.singer} - ${song.name}`] = true

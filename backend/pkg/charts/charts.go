@@ -90,16 +90,18 @@ type ToplistItem struct {
 }
 
 type ChartSongItem struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Singer   string `json:"singer"`
-	Album    string `json:"album"`
-	Duration int    `json:"duration"`
-	Interval int    `json:"interval"`
-	Cover    string `json:"cover"`
-	Source   string `json:"source"`
-	Songmid  string `json:"songmid"`
-	Hash     string `json:"hash,omitempty"`
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	Singer   string   `json:"singer"`
+	Album    string   `json:"album"`
+	Duration int      `json:"duration"`
+	Interval int      `json:"interval"`
+	Cover    string   `json:"cover"`
+	Source   string   `json:"source"`
+	Songmid  string   `json:"songmid"`
+	Hash     string   `json:"hash,omitempty"`
+	Quality  string   `json:"quality,omitempty"`
+	Qualitys []string `json:"qualitys,omitempty"`
 }
 
 type PlaylistItem struct {
