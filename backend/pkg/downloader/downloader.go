@@ -38,6 +38,8 @@ type SongPayload struct {
 	StreamURL string `json:"streamUrl"`
 	Referer   string `json:"referer"`
 	Quality   string `json:"quality"`
+	Lyric     string `json:"lyric"`
+	TLyric    string `json:"tlyric"`
 }
 
 // GetStreamReferer determines the appropriate Referer header for music streaming and downloading
@@ -327,6 +329,16 @@ func (d *Downloader) downloadSingleSong(song SongPayload) (*SongResult, error) {
 	// Save cover if available
 	if song.Cover != "" && strings.HasPrefix(song.Cover, "http") {
 		go d.downloadCover(song.Cover, filepath.Join(destDir, fmt.Sprintf("%s - %s.jpg", cleanSinger, cleanName)))
+	}
+
+	// Save lyric if available
+	if song.Lyric != "" {
+		lyricPath := filepath.Join(destDir, fmt.Sprintf("%s - %s.lrc", cleanSinger, cleanName))
+		_ = os.WriteFile(lyricPath, []byte(song.Lyric), 0644)
+	}
+	if song.TLyric != "" {
+		tLyricPath := filepath.Join(destDir, fmt.Sprintf("%s - %s.t.lrc", cleanSinger, cleanName))
+		_ = os.WriteFile(tLyricPath, []byte(song.TLyric), 0644)
 	}
 
 	return &SongResult{

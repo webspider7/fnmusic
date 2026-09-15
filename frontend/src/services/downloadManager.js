@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue'
-import { DownloadAPI, NasAPI, SearchAPI } from '../api/client'
+import { DownloadAPI, NasAPI, SearchAPI, MusicAPI } from '../api/client'
 import { lxRuntime } from '../engine/lx-runtime'
 
 // 任务数据结构：
@@ -105,10 +105,12 @@ async function checkSongsDownloaded(songs) {
 function addSong(song, activeSourceId, autoOpenOrOptions = true, qualityParam = null) {
   let autoOpen = true
   let quality = qualityParam || song.downloadQuality || song.quality || '320k'
+  let downloadLyric = true
 
   if (typeof autoOpenOrOptions === 'object' && autoOpenOrOptions !== null) {
     autoOpen = autoOpenOrOptions.autoOpen ?? true
     quality = autoOpenOrOptions.quality || quality
+    downloadLyric = autoOpenOrOptions.downloadLyric ?? true
   } else if (typeof autoOpenOrOptions === 'boolean') {
     autoOpen = autoOpenOrOptions
   }
@@ -128,6 +130,7 @@ function addSong(song, activeSourceId, autoOpenOrOptions = true, qualityParam = 
     songKey: key,
     song: { ...song },
     quality: quality,
+    downloadLyric: downloadLyric,
     status: 'pending',
     error: '',
     activeSourceId: activeSourceId || '',
@@ -146,7 +149,7 @@ function addSong(song, activeSourceId, autoOpenOrOptions = true, qualityParam = 
 }
 
 // 批量添加下载任务 (默认 autoOpen 为 false，静默后台加入队列)
-function addBatch(songs, activeSourceId, autoOpen = false, targetQuality = null) {
+function addBatch(songs, activeSourceId, autoOpen = false, targetQuality = null, downloadLyric = true) {
   if (!songs || !songs.length) return
 
   for (const song of songs) {
@@ -162,6 +165,7 @@ function addBatch(songs, activeSourceId, autoOpen = false, targetQuality = null)
       songKey: key,
       song: { ...song },
       quality: q,
+      downloadLyric,
       status: isPaused.value ? 'paused' : 'pending',
       error: '',
       activeSourceId: activeSourceId || '',
@@ -449,6 +453,19 @@ async function executeTask(task) {
   }
 
   if (task._aborted || task.status === 'paused') return
+
+  // 1.5 获取歌词 (如果需要)
+  if (task.downloadLyric) {
+    try {
+      const lyricRes = await MusicAPI.lyric(payload.source, payload.songmid, payload.name, payload.singer, payload.interval || payload.duration, payload.hash)
+      if (lyricRes?.code === 200 && lyricRes.data) {
+        payload.lyric = lyricRes.data.lyric || lyricRes.lyric || ''
+        payload.tlyric = lyricRes.data.tlyric || lyricRes.tlyric || ''
+      }
+    } catch (e) {
+      console.warn('下载管理器获取歌词失败:', e)
+    }
+  }
 
   // 2. 发起 NAS 存储下载阶段
   task.status = 'downloading'

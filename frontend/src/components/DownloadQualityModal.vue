@@ -134,12 +134,26 @@
               </div>
             </div>
 
-            <!-- 若无有效解析出的格式，兜底显示标准品质 -->
+          <!-- 若无有效解析出的格式，兜底显示标准品质 -->
             <div
               v-if="!isLoadingQualities && !availableQualityList.length"
               class="py-6 text-center text-xs text-gray-400"
             >
               未探测到该曲目的高阶无损格式，将默认以标准品质下载
+            </div>
+
+            <!-- 下载歌词选项 -->
+            <div class="mt-2 flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
+              <div class="flex items-center gap-2">
+                <div class="flex flex-col">
+                  <span class="text-xs font-semibold text-gray-800">同步下载歌词</span>
+                  <span class="text-[10px] text-gray-500">将歌词保存为同名 .lrc 文件</span>
+                </div>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" v-model="downloadLyric" class="sr-only peer" />
+                <div class="w-8 h-4.5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-emerald-600"></div>
+              </label>
             </div>
           </div>
 
@@ -187,6 +201,7 @@ const emit = defineEmits(['update:modelValue', 'confirm'])
 
 const modalRef = ref(null)
 const selectedQuality = ref('320k')
+const downloadLyric = ref(true)
 const rawQualities = ref([])
 const isLoadingQualities = ref(false)
 
@@ -341,7 +356,7 @@ function close() {
 }
 
 function handleConfirm() {
-  emit('confirm', props.song, selectedQuality.value)
+  emit('confirm', props.song, selectedQuality.value, downloadLyric.value)
   close()
 }
 </script>

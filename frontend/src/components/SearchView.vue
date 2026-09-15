@@ -770,8 +770,8 @@ function downloadSingleSong(song) {
   isQualityModalOpen.value = true
 }
 
-function handleConfirmDownloadQuality(song, quality) {
-  downloadManager.addSong(song, props.activeSource?.id, { autoOpen: false, quality })
+function handleConfirmDownloadQuality(song, quality, downloadLyric) {
+  downloadManager.addSong(song, props.activeSource?.id, { autoOpen: false, quality, downloadLyric })
   const qText = quality ? quality.toUpperCase() : '默认'
   showToast(`已将《${song.name}》(${qText})加入后台下载队列`)
 }
