@@ -185,7 +185,7 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'update-available'])
 
-const currentVersion = '1.2.8'
+const currentVersion = '1.2.9'
 const loading = ref(false)
 const updateInfo = ref(null)
 

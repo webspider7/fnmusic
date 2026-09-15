@@ -12,7 +12,7 @@ import (
 )
 
 // 当前应用版本号
-const CurrentVersion = "1.2.8"
+const CurrentVersion = "1.2.9"
 
 const (
 	RepoOwner          = "webspider7"
